@@ -3,6 +3,13 @@
   "version": "0.1.0",
   "private": true,
   "description": "Practice talking about your resume and projects with an AI interview coach (Gemma via Ollama or Google AI).",
+  "license": "Apache-2.0",
+  "author": "Beevibe",
+  "homepage": "https://github.com/beevibe-ai/interview-prep-coach",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/beevibe-ai/interview-prep-coach.git"
+  },
   "scripts": {
     "dev": "next dev -p 3100",
     "build": "next build",
