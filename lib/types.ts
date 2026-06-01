@@ -22,6 +22,18 @@ export interface DocText {
 export type Action = 'question' | 'respond';
 
 /**
+ * Who is conducting the interview. Shapes the kind of questions asked and the
+ * coach's lens. Picked by the candidate in the lobby.
+ */
+export type Interviewer =
+  | 'recruiter'
+  | 'hiring-manager'
+  | 'technical'
+  | 'behavioral'
+  | 'vc'
+  | 'executive';
+
+/**
  * Objective, browser-computed signals about how an answer was *delivered*.
  * Sent alongside the transcript so the coach can critique pace, filler, and
  * pauses even when raw audio isn't ingested by the model.
@@ -46,6 +58,7 @@ export interface ChatRequestBody {
   messages: ChatMessage[];
   documents: DocText[];
   action: Action;
+  interviewer?: Interviewer;
   audio?: AudioClip | null;
   delivery?: DeliverySignals | null;
 }

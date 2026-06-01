@@ -12,9 +12,13 @@ You upload your materials, then hop on a call with an AI coach:
    practice ("Try saying it something like this…").
 4. **You push back or practice**, all spoken, until it feels natural and like *you*.
 
-The coach is **Gemma 4**. It runs either against a **local Ollama** instance (great for solo
-dev) or the **Google AI API** (required for a hosted, public deployment), switched with a
-single env var.
+You also **choose the interviewer** — recruiter, hiring manager, technical, behavioral, VC, or
+executive — and the questions shift to match that lens. Every question is grounded in your
+actual materials; it won't invent projects or topics you didn't mention.
+
+The coach is a **Gemma** model. It runs either against a **local Ollama** instance (great for
+solo dev — Gemma 3) or the **Google AI API** (required for a hosted, public deployment — Gemma
+4), switched with a single env var.
 
 ## How a turn works (the "video call" feel)
 
@@ -36,26 +40,43 @@ single env var.
 
 ---
 
-## Run it locally (Ollama)
+## Run it locally (Ollama — free, private, no API key)
+
+**Prerequisites:** Node 18+ and [Ollama](https://ollama.com).
 
 ```bash
-cd interview-prep
-cp .env.example .env.local
+# 1. Install Ollama, start its server, and pull a model
+brew install ollama            # macOS; see ollama.com for other platforms
+ollama serve &                 # local model server on :11434 (skip if already running)
+ollama pull gemma3:4b          # ~3.3 GB — a solid default for text coaching
+
+# 2. Install + configure the app
 npm install
-npm run dev          # http://localhost:3100  (use Chrome/Edge; allow camera + mic)
+cp .env.example .env.local     # defaults already target Ollama + gemma3:4b
+
+# 3. Run it
+npm run dev                    # → http://localhost:3100
 ```
 
-`.env.local`:
+Open **http://localhost:3100** in **Chrome** (best Web Speech support) and **allow camera +
+mic**. In the lobby: **pick who's interviewing you** (recruiter, hiring manager, technical,
+behavioral, VC, or executive), upload your resume, and start the call.
+
+`.env.local` (Ollama defaults — already set by `cp .env.example .env.local`):
 
 ```
 LLM_PROVIDER=ollama
 OLLAMA_BASE_URL=http://localhost:11434
-OLLAMA_MODEL=gemma4         # use the exact tag from `ollama list`
+OLLAMA_MODEL=gemma3:4b         # any tag from `ollama list`
 ```
 
-> Want the model to actually **hear** your audio? Use an audio-capable Gemma 4 variant
-> (E2B/E4B, e.g. `gemma-4-E4B-it`) via Ollama and set `SEND_AUDIO=true`. Audio is capped at
-> 30 seconds; longer answers still get coached via transcript + delivery signals.
+> **Bigger model = sharper, more on-persona questions.** `gemma3:4b` is fast and fine for
+> practice; `ollama pull gemma3:12b` then set `OLLAMA_MODEL=gemma3:12b` for noticeably better
+> persona adherence (a bit slower).
+
+> Want the model to actually **hear** your audio? Use an audio-capable Gemma variant
+> (E2B/E4B) via Ollama and set `SEND_AUDIO=true`. Audio is capped at 30 seconds; longer
+> answers still get coached via transcript + delivery signals (which work on any model).
 
 > Note: browser camera/mic require a **secure context** — `localhost` counts, so local dev
 > works without HTTPS.
@@ -83,7 +104,7 @@ UPSTASH_REDIS_REST_TOKEN=
 
 ### Vercel (recommended — repo already uses Vercel)
 
-1. Create a Vercel project from this repo and set its **Root Directory** to `interview-prep`.
+1. Create a Vercel project from this repo (the repo root is the app — no subdirectory).
 2. Framework preset: **Next.js** (auto-detected; a `vercel.json` is included).
 3. Add the env vars above in **Project Settings → Environment Variables**.
 4. Deploy. Vercel serves over **HTTPS**, which the camera, mic, and Web Speech API require.
@@ -123,20 +144,19 @@ A self-contained **Next.js 14 (App Router)** app — no database. A call's state
 browser; the backend is stateless.
 
 ```
-interview-prep/
-  app/
-    page.tsx              # phase switch: Lobby (upload) ↔ Call
-    api/upload/route.ts   # extract text from PDF/DOCX/TXT/MD
-    api/chat/route.ts     # build the coach prompt, attach audio + delivery, call the model
-  components/
-    Lobby.tsx             # upload materials, start the call
-    Call.tsx              # webcam, mic VAD, captions, recording, TTS, turn-taking
-  lib/
-    llm.ts                # provider abstraction (ollama | google), audio attach
-    speech.ts             # TTS, speech recognition, delivery-signal computation
-    extract.ts            # document text extraction
-    prompts.ts            # call-aware coach prompt + directives
-    types.ts
+app/
+  page.tsx              # phase switch: Lobby ↔ Call; holds the interviewer choice
+  api/upload/route.ts   # extract text from PDF/DOCX/TXT/MD
+  api/chat/route.ts     # build the coach prompt (persona + grounding), call the model
+components/
+  Lobby.tsx             # pick interviewer, upload materials, start the call
+  Call.tsx              # webcam, mic VAD, captions, recording, TTS, turn-taking
+lib/
+  llm.ts                # provider abstraction (ollama | google), audio attach
+  speech.ts             # TTS, speech recognition, delivery-signal computation
+  extract.ts            # document text extraction
+  prompts.ts            # interviewer personas + grounded question / coach prompts
+  types.ts
 ```
 
 ## Model tags (verified against the Google AI catalog)

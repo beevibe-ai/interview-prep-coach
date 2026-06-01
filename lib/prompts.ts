@@ -1,4 +1,4 @@
-import type { Action, DeliverySignals, DocText } from './types';
+import type { Action, DeliverySignals, DocText, Interviewer } from './types';
 
 const COACH_RULES = `You are an expert interview coach running a LIVE, spoken mock interview — a
 video call. The candidate is speaking out loud and your replies are read aloud to them by
@@ -21,12 +21,54 @@ When you offer a version for them to practice, lead in naturally with
 "Try saying it something like this:" and then give a first-person answer they could say in
 about thirty to sixty seconds.`;
 
-export function buildSystem(documents: DocText[], action: Action): string {
+// Each interviewer asks a distinct kind of question through a distinct lens.
+const INTERVIEWERS: Record<Interviewer, { label: string; persona: string }> = {
+  recruiter: {
+    label: `a recruiter running a first-round phone screen`,
+    persona: `You care about motivation, communication, and fit — not deep technical detail. Ask high-level questions: why this role and company, a quick walk through their background, what they're looking for, and how they work with others.`,
+  },
+  'hiring-manager': {
+    label: `the hiring manager who owns this role`,
+    persona: `You care about impact, ownership, and judgment — can they actually do the job. Ask about results they drove, how they prioritise, a hard call they made, and how they'd approach a problem your team faces.`,
+  },
+  technical: {
+    label: `a senior engineer running a technical interview`,
+    persona: `You probe how things really work. Pick a specific project or technology from their materials and go deep: design choices, tradeoffs, what broke and how they debugged it, what they'd do differently.`,
+  },
+  behavioral: {
+    label: `an interviewer running a structured behavioral interview`,
+    persona: `You want STAR stories grounded in their real experience. Ask "tell me about a time…" questions about conflict, failure, leadership, ambiguity, and influence.`,
+  },
+  vc: {
+    label: `a VC hearing a pitch`,
+    persona: `You care about the problem, market, why-now, traction, moat, and the team. Ask sharp investor questions about the project or company in their materials: what's the wedge, how big can this get, why are they the ones to build it.`,
+  },
+  executive: {
+    label: `a senior executive in a final-round interview`,
+    persona: `You care about strategic thinking, vision alignment, leadership, and judgment under ambiguity. Ask big-picture questions about how they think, lead, and make tradeoffs.`,
+  },
+};
+
+function personaBlock(interviewer: Interviewer): string {
+  const p = INTERVIEWERS[interviewer] ?? INTERVIEWERS['hiring-manager'];
+  return `You are ${p.label}. ${p.persona}`;
+}
+
+export function buildSystem(
+  documents: DocText[],
+  action: Action,
+  interviewer: Interviewer = 'hiring-manager',
+): string {
   const docBlock = documents.length
     ? documents.map((d) => `### ${d.name}\n${d.text}`).join('\n\n')
     : '(No documents were uploaded. Ask general questions a candidate should be ready for, and mention that more tailored questions are possible once they share a resume or project.)';
 
   return `${COACH_RULES}
+
+────────────────────────────────────────
+INTERVIEWER
+────────────────────────────────────────
+${personaBlock(interviewer)}
 
 ────────────────────────────────────────
 CANDIDATE MATERIALS
@@ -41,9 +83,16 @@ ${directive(action)}`;
 
 function directive(action: Action): string {
   if (action === 'question') {
-    return `Ask the candidate ONE new interview question, drawn from their materials, that they
-should be ready to discuss out loud. Just ask the single question conversationally in one or
-two sentences — no preamble, no feedback. Don't repeat a question you've already asked.`;
+    return `Ask the candidate ONE new interview question, firmly in the voice and priorities of the
+interviewer described above — a recruiter probes motivation, fit, and what they want next; a
+hiring manager probes impact and judgment; a technical interviewer probes how things were actually
+built; a VC probes the business. Ground it in their real materials (reference an actual project,
+role, or detail), but FRAME it the way THIS interviewer would — do NOT default to "what was the
+hardest technical challenge" for every persona. Never invent a project, employer, metric, or topic
+the candidate did not mention — and since you don't know the company they're interviewing with,
+say "this role" or "this team", never name a specific company. Ask the single question
+conversationally in one or two sentences — no preamble, no feedback. Don't repeat a question
+you've already asked.`;
   }
 
   // respond

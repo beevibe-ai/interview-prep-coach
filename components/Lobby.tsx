@@ -1,15 +1,28 @@
 'use client';
 
 import { useState } from 'react';
-import type { DocText } from '@/lib/types';
+import type { DocText, Interviewer } from '@/lib/types';
+
+const INTERVIEWER_OPTIONS: { value: Interviewer; label: string; blurb: string }[] = [
+  { value: 'recruiter', label: 'Recruiter / HR', blurb: 'Screen: motivation, fit, background' },
+  { value: 'hiring-manager', label: 'Hiring manager', blurb: 'Impact, ownership, judgment' },
+  { value: 'technical', label: 'Technical', blurb: 'Deep dive on how you built it' },
+  { value: 'behavioral', label: 'Behavioral', blurb: 'STAR stories: conflict, failure' },
+  { value: 'vc', label: 'VC / Investor', blurb: 'Problem, market, traction, moat' },
+  { value: 'executive', label: 'Executive', blurb: 'Vision, strategy, leadership' },
+];
 
 export default function Lobby({
   documents,
   setDocuments,
+  interviewer,
+  setInterviewer,
   onStart,
 }: {
   documents: DocText[];
   setDocuments: (updater: (prev: DocText[]) => DocText[]) => void;
+  interviewer: Interviewer;
+  setInterviewer: (i: Interviewer) => void;
   onStart: () => void;
 }) {
   const [uploading, setUploading] = useState(false);
@@ -89,6 +102,38 @@ export default function Lobby({
         )}
 
         {error && <p className="mt-3 text-xs text-red-600">{error}</p>}
+      </div>
+
+      <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <h2 className="text-sm font-semibold text-slate-700">Who&apos;s interviewing you?</h2>
+        <p className="mt-1 text-xs text-slate-500">
+          Sets the kind of questions you get and the lens the coach uses.
+        </p>
+        <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
+          {INTERVIEWER_OPTIONS.map((opt) => {
+            const selected = interviewer === opt.value;
+            return (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => setInterviewer(opt.value)}
+                aria-pressed={selected}
+                className={`flex flex-col gap-0.5 rounded-lg border px-3 py-2 text-left transition ${
+                  selected
+                    ? 'border-slate-900 bg-slate-900 text-white'
+                    : 'border-slate-200 bg-white text-slate-700 hover:border-slate-400 hover:bg-slate-50'
+                }`}
+              >
+                <span className="text-xs font-semibold">{opt.label}</span>
+                <span
+                  className={`text-[10px] leading-tight ${selected ? 'text-slate-300' : 'text-slate-400'}`}
+                >
+                  {opt.blurb}
+                </span>
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       <button

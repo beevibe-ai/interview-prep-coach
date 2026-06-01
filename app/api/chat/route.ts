@@ -28,6 +28,7 @@ export async function POST(req: NextRequest) {
     const messages: ChatMessage[] = Array.isArray(body.messages) ? body.messages : [];
     const documents = Array.isArray(body.documents) ? body.documents : [];
     const action = body.action ?? 'respond';
+    const interviewer = body.interviewer ?? 'hiring-manager';
 
     // Fold the delivery signals into the latest user turn so every provider
     // (audio-capable or not) can coach how the answer was spoken.
@@ -40,7 +41,7 @@ export async function POST(req: NextRequest) {
       };
     }
 
-    const system = buildSystem(documents, action);
+    const system = buildSystem(documents, action, interviewer);
     const audio = sendAudio ? body.audio ?? null : null;
     const content = await chat(system, enriched, audio);
 

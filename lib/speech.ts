@@ -55,15 +55,45 @@ export function speak(text: string, onDone?: () => void): void {
     onDone?.();
     return;
   }
-  window.speechSynthesis.cancel();
+  const synth = window.speechSynthesis;
+  synth.cancel();
+
+  // The call loop hands the mic back from onDone, so onDone MUST fire — or the
+  // turn deadlocks (stuck on "Coach is speaking", listening never starts).
+  // Chrome's speechSynthesis is unreliable about onend: voices load async and
+  // long utterances get silently cut at ~15s, so onend can never arrive. Fire
+  // onDone exactly once — from onend/onerror OR a duration-based fallback.
+  let finished = false;
+  let fallback: ReturnType<typeof setTimeout> | undefined;
+  let keepAlive: ReturnType<typeof setInterval> | undefined;
+  const finish = () => {
+    if (finished) return;
+    finished = true;
+    if (fallback) clearTimeout(fallback);
+    if (keepAlive) clearInterval(keepAlive);
+    onDone?.();
+  };
+
   const utter = new SpeechSynthesisUtterance(text);
   utter.rate = 1.02;
   utter.pitch = 1;
-  if (onDone) {
-    utter.onend = () => onDone();
-    utter.onerror = () => onDone();
-  }
-  window.speechSynthesis.speak(utter);
+  utter.onend = finish;
+  utter.onerror = finish;
+
+  // Estimate speaking time (~2.5 words/sec) + buffer; if the browser never
+  // reports the utterance finished, the fallback hands the mic back anyway.
+  const words = text.trim() ? text.trim().split(/\s+/).length : 0;
+  const estMs = Math.max(1500, (words / 2.5) * 1000) + 2500;
+  fallback = setTimeout(finish, estMs);
+  // Chrome pauses long utterances after ~15s; nudge it to keep speaking.
+  keepAlive = setInterval(() => {
+    if (synth.speaking) {
+      synth.pause();
+      synth.resume();
+    }
+  }, 6000);
+
+  synth.speak(utter);
 }
 
 export function cancelSpeech(): void {

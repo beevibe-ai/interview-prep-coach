@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { AudioClip, ChatMessage, DocText } from '@/lib/types';
+import type { AudioClip, ChatMessage, DocText, Interviewer } from '@/lib/types';
 import {
   blobToBase64,
   cancelSpeech,
@@ -20,9 +20,11 @@ const LONG_PAUSE_MS = 1200; // a silence this long mid-answer counts as a "long 
 
 export default function Call({
   documents,
+  interviewer,
   onEnd,
 }: {
   documents: DocText[];
+  interviewer: Interviewer;
   onEnd: () => void;
 }) {
   const [phase, setPhase] = useState<Phase>('connecting');
@@ -68,6 +70,7 @@ export default function Call({
             messages: messagesRef.current,
             documents,
             action,
+            interviewer,
             audio: audio ?? null,
             delivery: delivery ?? null,
           }),
@@ -136,7 +139,9 @@ export default function Call({
         }
         setCaption((finalTranscriptRef.current + interim).trim());
       };
-      recognition.onerror = () => {};
+      recognition.onerror = (e) => {
+        console.warn('[interview-prep] speech recognition error:', (e as { error?: string }).error);
+      };
       try {
         recognition.start();
       } catch {
@@ -289,6 +294,10 @@ export default function Call({
   // ── Setup / teardown ──────────────────────────────────────────
   useEffect(() => {
     let cancelled = false;
+    // React Strict Mode (dev) double-mounts: the first unmount's cleanup sets
+    // endedRef = true, and refs persist across the remount — which would block
+    // startListening() on the live mount forever. Reset it for this mount.
+    endedRef.current = false;
     (async () => {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
