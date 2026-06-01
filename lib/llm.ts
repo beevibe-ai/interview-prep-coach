@@ -28,9 +28,16 @@ export async function chat(
   messages: ChatMessage[],
   audio?: AudioClip | null,
 ): Promise<string> {
-  return getProvider() === 'google'
-    ? chatGoogle(system, messages, audio)
-    : chatOllama(system, messages);
+  const once = () =>
+    getProvider() === 'google' ? chatGoogle(system, messages, audio) : chatOllama(system, messages);
+  // Small local models (e.g. gemma3:4b) occasionally return an empty completion.
+  // Retry a few times — the next sample almost always has content — before
+  // surfacing an error instead of the blank "(no response)" the coach speaks.
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const out = (await once()).trim();
+    if (out) return out;
+  }
+  throw new Error('The coach came back empty. Hit "Next question" to try again.');
 }
 
 async function chatOllama(system: string, messages: ChatMessage[]): Promise<string> {
@@ -46,7 +53,10 @@ async function chatOllama(system: string, messages: ChatMessage[]): Promise<stri
         model,
         stream: false,
         messages: [{ role: 'system', content: system }, ...messages],
-        options: { temperature: 0.7 },
+        // num_ctx: Ollama defaults to a small window (~4k); a long interview
+        // (system prompt + resume + many turns) can overflow it and degrade or
+        // blank the reply. Give it room.
+        options: { temperature: 0.7, num_ctx: 8192 },
       }),
     });
   } catch {
