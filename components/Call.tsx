@@ -48,6 +48,10 @@ export default function Call({
   const phaseRef = useRef<Phase>('connecting');
   const turnDoneRef = useRef(false);
   const endedRef = useRef(false);
+  // Turn generation. Bumped when a turn is superseded (Next question) or the
+  // call ends; stale async callbacks (a cancelled utterance's onDone, an
+  // in-flight fetch) compare against it and bail instead of acting on a dead turn.
+  const genRef = useRef(0);
 
   const setPhaseSafe = useCallback((p: Phase) => {
     phaseRef.current = p;
@@ -61,6 +65,7 @@ export default function Call({
   // ── Networking ────────────────────────────────────────────────
   const callCoach = useCallback(
     async (action: 'question' | 'respond', audio?: AudioClip | null, delivery?: ReturnType<typeof computeDelivery> | null) => {
+      const gen = ++genRef.current; // this turn; bail later if superseded or ended
       setPhaseSafe('thinking');
       try {
         const res = await fetch('/api/chat', {
@@ -75,13 +80,16 @@ export default function Call({
             delivery: delivery ?? null,
           }),
         });
-        const data = await res.json();
+        const data = await res.json().catch(() => ({}));
+        // The call ended, or a newer turn started (Next question) while we waited.
+        if (endedRef.current || gen !== genRef.current) return;
         if (!res.ok) throw new Error(data.error || 'The coach is unavailable.');
         const reply: string = data.content || '(no response)';
         addMessage({ role: 'assistant', content: reply });
         setCoachLine(reply);
-        speakThenListen(reply);
+        speakThenListen(reply, gen);
       } catch (err) {
+        if (endedRef.current || gen !== genRef.current) return;
         setError(err instanceof Error ? err.message : 'The coach is unavailable.');
         setPhaseSafe('error');
       }
@@ -91,10 +99,12 @@ export default function Call({
   );
 
   // ── Speak, then hand the mic back ─────────────────────────────
-  const speakThenListen = useCallback((text: string) => {
+  const speakThenListen = useCallback((text: string, gen: number) => {
     setPhaseSafe('coachSpeaking');
     speak(sanitizeForSpeech(text), () => {
-      if (endedRef.current) return;
+      // Don't hand the mic back if the call ended or this turn was superseded
+      // (Next question, or speech cancelled to move on).
+      if (endedRef.current || gen !== genRef.current) return;
       startListening();
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -264,6 +274,7 @@ export default function Call({
 
   // ── Controls ──────────────────────────────────────────────────
   const nextQuestion = useCallback(() => {
+    genRef.current++; // invalidate the in-progress turn so its speak/onDone can't restart listening
     cancelSpeech();
     turnDoneRef.current = true;
     stopListeningPipes();

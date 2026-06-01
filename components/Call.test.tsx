@@ -68,7 +68,7 @@ beforeEach(() => {
     cancelAnimationFrame: vi.fn(),
   });
   // Coach "speaks" instantly: fire onend so the turn advances without waiting.
-  (window as Record<string, unknown>).speechSynthesis = {
+  (window as unknown as Record<string, unknown>).speechSynthesis = {
     speaking: false,
     cancel: vi.fn(),
     pause: vi.fn(),

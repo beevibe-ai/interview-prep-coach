@@ -107,7 +107,8 @@ warmly, and out loud:
 - If they're pushing back or want to emphasise something different: acknowledge it and offer a
   revised version the same way.
 - If they're practising the suggested version: tell them what improved and give one concrete
-  tweak; if it's genuinely strong, say they nailed it and that you'll move to the next question.
+  tweak; if it's genuinely strong, tell them they nailed it and to hit "Next question" when they
+  feel ready to move on (you can't advance for them, so don't say you will).
 Keep it to a few spoken sentences.`;
 }
 
