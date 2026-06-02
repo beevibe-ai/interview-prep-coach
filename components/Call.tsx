@@ -150,13 +150,17 @@ export default function Call({
       recognitionRef.current = recognition;
       recognition.onresult = (event: SpeechRecognitionEvent) => {
         let interim = '';
+        let gotResult = false;
         for (let i = event.resultIndex; i < event.results.length; i++) {
           const result = event.results[i];
           if (result.isFinal) finalTranscriptRef.current += result[0].transcript + ' ';
           else interim += result[0].transcript;
+          gotResult = true;
         }
         setCaption((finalTranscriptRef.current + interim).trim());
-        lastSpeechAtRef.current = performance.now();
+        // Only bump the silence anchor on a real result — guard against
+        // (rare) empty events that would otherwise defer end-of-turn for no reason.
+        if (gotResult) lastSpeechAtRef.current = performance.now();
       };
       recognition.onerror = (e) => {
         console.warn('[interview-prep] speech recognition error:', (e as { error?: string }).error);
@@ -232,6 +236,10 @@ export default function Call({
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
     rafRef.current = null;
     if (recognitionRef.current) {
+      // Detach the handler before stop(). Chrome's SR can emit one trailing
+      // onresult after stop(); the old closure still mutates the shared
+      // lastSpeechAtRef and would defer end-of-turn on the NEXT listening turn.
+      recognitionRef.current.onresult = null;
       try {
         recognitionRef.current.stop();
       } catch {
