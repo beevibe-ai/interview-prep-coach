@@ -15,7 +15,10 @@ type Phase = 'connecting' | 'coachSpeaking' | 'listening' | 'thinking' | 'error'
 
 // Voice-activity tuning.
 const SILENCE_RMS = 0.012; // below this counts as silence
-const END_SILENCE_MS = 1800; // pause this long (after speaking) ends the turn
+// End-of-turn pause. People routinely pause 2–3s mid-sentence to think; ending
+// the turn at 1.8s clipped natural answers. The VAD also extends this whenever
+// the SR is still emitting interim/final results (see lastSpeechAtRef below).
+const END_SILENCE_MS = 2500;
 const LONG_PAUSE_MS = 1200; // a silence this long mid-answer counts as a "long pause"
 
 export default function Call({
@@ -44,6 +47,10 @@ export default function Call({
   const audioCtxRef = useRef<AudioContext | null>(null);
   const rafRef = useRef<number | null>(null);
   const longPausesRef = useRef(0);
+  // Last time SR emitted an interim/final result. VAD treats ongoing recognition
+  // as evidence the user is still mid-utterance, so a brief quiet beat between
+  // words doesn't trip end-of-turn while SR is still composing the sentence.
+  const lastSpeechAtRef = useRef(0);
   const messagesRef = useRef<ChatMessage[]>([]);
   const phaseRef = useRef<Phase>('connecting');
   const turnDoneRef = useRef(false);
@@ -118,6 +125,7 @@ export default function Call({
     setCaption('');
     finalTranscriptRef.current = '';
     longPausesRef.current = 0;
+    lastSpeechAtRef.current = 0;
     turnDoneRef.current = false;
     chunksRef.current = [];
     startTimeRef.current = performance.now();
@@ -148,6 +156,7 @@ export default function Call({
           else interim += result[0].transcript;
         }
         setCaption((finalTranscriptRef.current + interim).trim());
+        lastSpeechAtRef.current = performance.now();
       };
       recognition.onerror = (e) => {
         console.warn('[interview-prep] speech recognition error:', (e as { error?: string }).error);
@@ -198,7 +207,12 @@ export default function Call({
         pauseCounted = false;
       } else if (hasSpoken) {
         if (silenceStart === 0) silenceStart = now;
-        const silentFor = now - silenceStart;
+        // SR fires interim/final results while the user is composing a sentence,
+        // even across brief sub-second quiet moments between words. If a result
+        // landed more recently than audio went quiet, treat that as the start
+        // of silence — otherwise mid-sentence pauses below SILENCE_RMS clip the turn.
+        const effectiveSilenceStart = Math.max(silenceStart, lastSpeechAtRef.current);
+        const silentFor = now - effectiveSilenceStart;
         if (silentFor > LONG_PAUSE_MS && !pauseCounted) {
           longPausesRef.current += 1;
           pauseCounted = true;
