@@ -59,9 +59,10 @@ export function buildSystem(
   action: Action,
   interviewer: Interviewer = 'hiring-manager',
 ): string {
-  const docBlock = documents.length
+  const hasDocs = documents.length > 0;
+  const docBlock = hasDocs
     ? documents.map((d) => `### ${d.name}\n${d.text}`).join('\n\n')
-    : '(No documents were uploaded. Ask general questions a candidate should be ready for, and mention that more tailored questions are possible once they share a resume or project.)';
+    : '(No documents were uploaded. The candidate is doing generic practice — there is no resume or project text to ground in.)';
 
   return `${COACH_RULES}
 
@@ -78,11 +79,26 @@ ${docBlock}
 ────────────────────────────────────────
 THIS TURN
 ────────────────────────────────────────
-${directive(action)}`;
+${directive(action, hasDocs)}`;
 }
 
-function directive(action: Action): string {
+function directive(action: Action, hasDocs: boolean): string {
   if (action === 'question') {
+    if (!hasDocs) {
+      // No resume / project text. Asking the model to "ground in their materials"
+      // when there are none produces a contradiction it resolves by saying almost
+      // nothing ("ok"). Give it explicit permission to ask a generic, persona-fit
+      // opener instead.
+      return `The candidate has not shared a resume or project notes, so you cannot reference
+specific projects or employers. Ask ONE generic, persona-appropriate opener in the voice of the
+interviewer described above — for a recruiter, that's "tell me about yourself", "walk me through
+your background", "what are you looking for in this next role"; a hiring manager opens on impact
+or how they approach problems; a technical interviewer asks them to pick a project to walk through;
+a behavioral interviewer asks a classic "tell me about a time..."; a VC opens on what they're
+building and why; an executive opens on a recent decision they're proud of. Do NOT invent details
+about them. Do NOT name a company — say "this role" or "this team". One or two spoken sentences,
+no preamble, no feedback. Don't repeat a question you've already asked.`;
+    }
     return `Ask the candidate ONE new interview question, firmly in the voice and priorities of the
 interviewer described above — a recruiter probes motivation, fit, and what they want next; a
 hiring manager probes impact and judgment; a technical interviewer probes how things were actually
