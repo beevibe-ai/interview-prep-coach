@@ -11,6 +11,14 @@ export interface DocText {
   text: string;
   /** Original character count before any truncation. */
   chars: number;
+  /** Character count included in the model prompt. */
+  includedChars?: number;
+  /** True when only the first part of the document is sent to the model. */
+  truncated?: boolean;
+  /** Which extractor produced the readable text. */
+  extractionMethod?: 'pdf-text' | 'pdf-vision' | 'pdf-ollama-vision' | 'docx-text' | 'plain-text';
+  /** Character count from the embedded PDF text layer before visual fallback. */
+  nativeTextChars?: number;
 }
 
 /**

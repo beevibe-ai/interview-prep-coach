@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { extractText } from '@/lib/extract';
+import { extractText, getOllamaPdfVisionModel, getPdfVisionApiKey } from '@/lib/extract';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
-export const maxDuration = 30;
+export const maxDuration = 60;
 
 // Kept under common serverless request-body limits (e.g. Vercel ~4.5 MB) so
 // uploads work on hosted deployments, not just locally.
@@ -27,7 +27,20 @@ export async function POST(req: NextRequest) {
         );
       }
       const buffer = Buffer.from(await file.arrayBuffer());
-      docs.push(await extractText(file.name, buffer));
+      const doc = await extractText(file.name, buffer);
+      if (!doc.text.trim()) {
+        const visualHint =
+          file.name.toLowerCase().endsWith('.pdf') && !getPdfVisionApiKey()
+            ? ` Local Ollama PDF vision also tried "${getOllamaPdfVisionModel()}"; set GOOGLE_API_KEY or GEMINI_API_KEY to enable Gemini PDF vision extraction instead.`
+            : '';
+        return NextResponse.json(
+          {
+            error: `"${file.name}" uploaded, but no readable text could be extracted.${visualHint}`,
+          },
+          { status: 422 },
+        );
+      }
+      docs.push(doc);
     }
 
     return NextResponse.json({ documents: docs });

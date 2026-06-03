@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { chat } from '@/lib/llm';
+import { promptMessagesForAction } from '@/lib/prompt-messages';
 import { buildSystem, formatDelivery } from '@/lib/prompts';
 import { clientIp, rateLimit } from '@/lib/rate-limit';
 import type { ChatMessage, ChatRequestBody } from '@/lib/types';
@@ -41,9 +42,10 @@ export async function POST(req: NextRequest) {
       };
     }
 
+    const promptMessages = promptMessagesForAction(enriched, action);
     const system = buildSystem(documents, action, interviewer);
     const audio = sendAudio ? body.audio ?? null : null;
-    const content = await chat(system, enriched, audio);
+    const content = await chat(system, promptMessages, audio);
 
     return NextResponse.json({ content });
   } catch (err) {

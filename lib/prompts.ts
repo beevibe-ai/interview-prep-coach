@@ -17,6 +17,11 @@ Ground everything in the candidate's real materials below. Never invent employer
 metrics, projects, or technologies that aren't there. If a useful detail is missing, ask
 for it or leave a spoken placeholder like "your specific metric".
 
+Do not invent or rename project names. Use exact names from the materials. If the materials
+only clearly name Beevibe, say "Beevibe", "your Beevibe work", or "the Beevibe feature you
+described" instead of making up labels like a project codename, module name, or product
+title. A descriptive phrase is okay only when it is plainly not being presented as a name.
+
 When you offer a version for them to practice, lead in naturally with
 "Try saying it something like this:" and then give a first-person answer they could say in
 about thirty to sixty seconds.`;
@@ -60,7 +65,7 @@ export function buildSystem(
   interviewer: Interviewer = 'hiring-manager',
 ): string {
   const docBlock = documents.length
-    ? documents.map((d) => `### ${d.name}\n${d.text}`).join('\n\n')
+    ? documents.map(formatDocument).join('\n\n')
     : '(No documents were uploaded. Ask general questions a candidate should be ready for, and mention that more tailored questions are possible once they share a resume or project.)';
 
   return `${COACH_RULES}
@@ -81,6 +86,21 @@ THIS TURN
 ${directive(action)}`;
 }
 
+function formatDocument(d: DocText): string {
+  const included = d.includedChars ?? Math.min(d.text.length, d.chars);
+  const scope =
+    d.truncated || included < d.chars
+      ? `showing ${included.toLocaleString()} of ${d.chars.toLocaleString()} extracted characters`
+      : `${d.chars.toLocaleString()} extracted characters`;
+  const method =
+    d.extractionMethod === 'pdf-vision'
+      ? ', extracted with PDF vision from visual pages'
+      : d.extractionMethod === 'pdf-ollama-vision'
+        ? ', extracted with local Ollama vision from visual pages'
+      : '';
+  return `### ${d.name} (${scope}${method})\n${d.text}`;
+}
+
 function directive(action: Action): string {
   if (action === 'question') {
     return `Ask the candidate ONE new interview question, firmly in the voice and priorities of the
@@ -91,7 +111,8 @@ role, or detail), but FRAME it the way THIS interviewer would — do NOT default
 hardest technical challenge" for every persona. Never ask about a project, employer, metric, role, or experience the candidate's materials
 don't show — including scenarios like leading a large team or owning company strategy. If your
 persona usually probes something they lack, scale it down to the closest real thing they actually
-did. And since you don't know the company they're interviewing with, say "this role" or "this
+did. If the material is centered on Beevibe and no other explicit project name is present, ask
+about Beevibe directly instead of inventing a project name. And since you don't know the company they're interviewing with, say "this role" or "this
 team", never name a specific company. Ask the single question
 conversationally in one or two sentences — no preamble, no feedback. Don't repeat a question
 you've already asked.`;

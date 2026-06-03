@@ -70,6 +70,14 @@ OLLAMA_BASE_URL=http://localhost:11434
 OLLAMA_MODEL=gemma3:4b         # any tag from `ollama list`
 ```
 
+For image-heavy PDFs and slide decks, add `GOOGLE_API_KEY` or `GEMINI_API_KEY` even if the
+coach itself stays on Ollama. The upload route first tries the embedded PDF text layer, then
+falls back to Gemini document vision (`PDF_EXTRACTOR_MODEL=gemini-3.5-flash`) when the text
+layer is empty or tiny. If no Gemini key is configured, it can render PDF pages locally with
+Poppler's `pdftoppm` and send those page images to Ollama
+(`PDF_EXTRACTOR_OLLAMA_MODEL=gemma3:4b`, or `qwen2.5vl:7b` if you pull it). The local path
+defaults to the first 3 rendered pages so uploads stay responsive on small local models.
+
 > **Bigger model = sharper, more on-persona questions.** `gemma3:4b` is fast and fine for
 > practice; `ollama pull gemma3:12b` then set `OLLAMA_MODEL=gemma3:12b` for noticeably better
 > persona adherence (a bit slower).
@@ -93,6 +101,8 @@ models — both **text + image only (no audio)**:
 LLM_PROVIDER=google
 GOOGLE_API_KEY=your_key_here
 GOOGLE_MODEL=gemma-4-26b-a4b-it   # MoE, lighter/cheaper (recommended). Or gemma-4-31b-it (dense, higher quality)
+PDF_EXTRACTOR_MODEL=gemini-3.5-flash # visual PDF extraction for slide decks/scanned PDFs
+PDF_EXTRACTOR_OLLAMA_MODEL=gemma3:4b # local visual PDF fallback; qwen2.5vl:7b is stronger if installed
 SEND_AUDIO=false                  # hosted Gemma 4 rejects audio; coaching uses transcript + delivery signals
 
 # Rate limiting — protects your paid API on a public URL

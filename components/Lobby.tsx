@@ -89,6 +89,19 @@ export default function Lobby({
                 <span className="truncate text-slate-700" title={d.name}>
                   {d.name}
                 </span>
+                <span
+                  className={`shrink-0 text-[10px] ${
+                    d.truncated
+                      ? 'text-amber-600'
+                      : d.extractionMethod === 'pdf-vision' ||
+                          d.extractionMethod === 'pdf-ollama-vision'
+                        ? 'text-emerald-600'
+                        : 'text-slate-400'
+                  }`}
+                  title={formatDocTitle(d)}
+                >
+                  {formatDocMeta(d)}
+                </span>
                 <button
                   className="shrink-0 text-slate-400 hover:text-red-500"
                   onClick={() => setDocuments((prev) => prev.filter((p) => p.name !== d.name))}
@@ -153,4 +166,37 @@ function mergeDocs(prev: DocText[], next: DocText[]): DocText[] {
   const byName = new Map(prev.map((d) => [d.name, d]));
   for (const d of next) byName.set(d.name, d);
   return Array.from(byName.values());
+}
+
+function formatDocSize(doc: DocText): string {
+  const included = doc.includedChars ?? Math.min(doc.text.length, doc.chars);
+  if (doc.truncated) return `${formatCompact(included)} / ${formatCompact(doc.chars)} chars`;
+  return `${formatCompact(doc.chars)} chars`;
+}
+
+function formatDocMeta(doc: DocText): string {
+  const method =
+    doc.extractionMethod === 'pdf-vision'
+      ? 'vision PDF'
+      : doc.extractionMethod === 'pdf-ollama-vision'
+        ? 'Ollama vision'
+        : null;
+  return method ? `${formatDocSize(doc)} · ${method}` : formatDocSize(doc);
+}
+
+function formatDocTitle(doc: DocText): string {
+  if (doc.extractionMethod === 'pdf-vision') {
+    const native = doc.nativeTextChars ?? 0;
+    return `Extracted with Gemini PDF vision after the embedded PDF text layer returned ${native} characters.`;
+  }
+  if (doc.extractionMethod === 'pdf-ollama-vision') {
+    const native = doc.nativeTextChars ?? 0;
+    return `Extracted with local Ollama vision after the embedded PDF text layer returned ${native} characters.`;
+  }
+  if (doc.truncated) return 'Only the first part of this document is sent to the coach.';
+  return 'Readable text extracted from this document.';
+}
+
+function formatCompact(n: number): string {
+  return n >= 1000 ? `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k` : String(n);
 }
