@@ -20,6 +20,12 @@ The coach is a **Gemma** model. It runs either against a **local Ollama** instan
 solo dev — Gemma 3) or the **Google AI API** (required for a hosted, public deployment — Gemma
 4), switched with a single env var.
 
+> **Two modes in one app.** Alongside the spoken mock interview, there's a **Live Audio
+> Teacher** — a co-browse companion that reads any web page *with* you: it opens with an
+> overview, then walks the page section by section, explaining the key idea of each while
+> scrolling to and highlighting it, and answers your spoken questions. See
+> [Live Audio Teacher](#live-audio-teacher-co-browse-any-page).
+
 ## How a turn works (the "video call" feel)
 
 - **Self-view webcam** so you get used to being on camera (frames are not analyzed).
@@ -91,6 +97,76 @@ defaults to the first 3 rendered pages so uploads stay responsive on small local
 
 ---
 
+## Live Audio Teacher (co-browse any page)
+
+A second mode: an AI tutor that reads a web page **with you, out loud** — a NotebookLM-style
+guided walkthrough, but live on whatever page you're actually looking at.
+
+Turn it on and it:
+
+1. Gives a short **overview** — what the page is and how it's organized.
+2. **Walks the page section by section**, explaining the *key idea* of each (not a line-by-line
+   reading), scrolling to each section and **boxing it on the page** as it talks.
+3. Shows a **live caption** docked at the bottom that reveals word-by-word in sync with the
+   voice, with the phrase it's explaining highlighted.
+4. Lets you **ask a question by voice or text** at any point about what's on screen.
+
+It runs over **your own real browser tab** via a small Chrome extension. Nothing about the page
+leaves your machine until you press **Follow**, and then only to your local app.
+
+### Set it up locally
+
+**1. Run the app** (the teacher's brain + APIs live here):
+
+```bash
+npm install
+npm run dev                    # → http://localhost:3100
+```
+
+**2. Pick the teaching model** — two options:
+
+- **Claude Sonnet (recommended, sharpest):** add an Anthropic key to `.env.local`:
+  ```
+  ANTHROPIC_API_KEY=sk-ant-...
+  # optional override (default is claude-sonnet-4-6):
+  COBROWSE_TEACHER_MODEL=claude-sonnet-4-6
+  ```
+- **Local Gemma (free, no key):** if no Anthropic key is set, the teacher automatically falls
+  back to your local Ollama model (`gemma3:4b`, from the setup above). Fine for narration, a
+  bit less sharp.
+
+**3. Load the Chrome extension** (one-time):
+
+1. Open `chrome://extensions`
+2. Turn on **Developer mode** (top-right toggle).
+3. Click **Load unpacked** and select the **`extension/`** folder in this repo.
+
+### Use it
+
+1. Open any normal web page — an article, docs, an arxiv paper.
+2. A dark **Live Teacher** bar appears at the bottom. Click **Follow on**.
+3. It scrolls to the top, gives the overview, then walks the page — highlighting each section
+   and speaking. Controls: **▶** explain the section on screen, **?** ask a question, **■**
+   stop talking, **–** minimize, **×** hide.
+
+> **After you reload the extension, hard-refresh the page** (Cmd/Ctrl + Shift + R) so the new
+> code is injected. If the bar shows "Reading the page…" and never starts, that's the cause.
+
+> Best in **Chrome** (uses the browser's built-in text-to-speech). The page reflows up by the
+> bar's height, so the dock never hides content.
+
+### Good to know
+
+- The teacher reads the **visible** page text; treat it like any extension with page access. It
+  will not log in, submit forms, or navigate on its own.
+- The co-browse teacher's `/api/cobrowse/teach` route streams sentence-by-sentence so speech
+  starts on the first sentence. With an Anthropic key it uses Claude Sonnet; otherwise local
+  Gemma.
+- There's also an experimental **Hermes** path (`lib/hermes-teacher.ts`) that drives a *separate*
+  visible Chrome via CDP — a prototype, not the main experience.
+
+---
+
 ## Deploying for a broad audience (hosted)
 
 A public deployment **cannot use Ollama** (it's a local process). Point it at the hosted
@@ -155,17 +231,25 @@ browser; the backend is stateless.
 
 ```
 app/
-  page.tsx              # phase switch: Lobby ↔ Call; holds the interviewer choice
-  api/upload/route.ts   # extract text from PDF/DOCX/TXT/MD
-  api/chat/route.ts     # build the coach prompt (persona + grounding), call the model
+  page.tsx                    # phase switch: Lobby ↔ Call ↔ co-browse teacher
+  api/upload/route.ts         # extract text from PDF/DOCX/TXT/MD
+  api/chat/route.ts           # build the coach prompt (persona + grounding), call the model
+  api/cobrowse/teach/route.ts # live teacher: streamed, sentence-by-sentence explanations
+  api/cobrowse/*              # context store, SSE events, in-page guide commands
 components/
-  Lobby.tsx             # pick interviewer, upload materials, start the call
-  Call.tsx              # webcam, mic VAD, captions, recording, TTS, turn-taking
+  Lobby.tsx                   # pick interviewer, upload materials, start the call
+  Call.tsx                    # webcam, mic VAD, captions, recording, TTS, turn-taking
+  CoBrowseTeacher.tsx         # live-teacher dashboard (app side)
+extension/                    # Chrome MV3 extension for the live teacher
+  content.js                  # page-structure model, section walk, caption, highlight
+  background.js               # streams the teach SSE back to the page as it speaks
 lib/
-  llm.ts                # provider abstraction (ollama | google), audio attach
-  speech.ts             # TTS, speech recognition, delivery-signal computation
-  extract.ts            # document text extraction
-  prompts.ts            # interviewer personas + grounded question / coach prompts
+  llm.ts                      # provider abstraction (ollama | google), audio attach
+  anthropic.ts                # Claude Sonnet (streaming) for the co-browse teacher
+  cobrowse-store.ts           # active-tab context + per-URL teaching memory
+  speech.ts                   # TTS, speech recognition, delivery-signal computation
+  extract.ts                  # document text extraction
+  prompts.ts                  # interviewer personas + grounded question / coach prompts
   types.ts
 ```
 
