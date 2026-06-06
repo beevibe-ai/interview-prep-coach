@@ -1,0 +1,50 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      body {
+        width: 260px;
+        margin: 0;
+        padding: 12px;
+        font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        color: #0f172a;
+      }
+      h1 {
+        margin: 0 0 8px;
+        font-size: 14px;
+      }
+      p {
+        margin: 0 0 10px;
+        color: #475569;
+      }
+      button {
+        width: 100%;
+        margin-top: 8px;
+        border: 0;
+        border-radius: 9px;
+        background: #0f172a;
+        color: white;
+        cursor: pointer;
+        font: inherit;
+        font-weight: 650;
+        padding: 8px 10px;
+      }
+      .status {
+        margin-top: 10px;
+        border-radius: 9px;
+        background: #f8fafc;
+        padding: 8px;
+        color: #475569;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Live Teacher</h1>
+    <p>Open the local dashboard or use the floating control on any webpage.</p>
+    <button id="show">Show widget on this tab</button>
+    <button id="open">Open dashboard</button>
+    <div class="status" id="status">Checking localhost...</div>
+    <script src="popup.js"></script>
+  </body>
+</html>

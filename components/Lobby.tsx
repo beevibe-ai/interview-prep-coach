@@ -18,12 +18,14 @@ export default function Lobby({
   interviewer,
   setInterviewer,
   onStart,
+  onStartTeacher,
 }: {
   documents: DocText[];
   setDocuments: (updater: (prev: DocText[]) => DocText[]) => void;
   interviewer: Interviewer;
   setInterviewer: (i: Interviewer) => void;
   onStart: () => void;
+  onStartTeacher: () => void;
 }) {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -149,14 +151,23 @@ export default function Lobby({
         </div>
       </div>
 
-      <button
-        className="rounded-xl bg-slate-900 px-4 py-3 text-sm font-medium text-white transition hover:bg-slate-700"
-        onClick={onStart}
-      >
-        Start the call →
-      </button>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <button
+          className="rounded-xl bg-slate-900 px-4 py-3 text-sm font-medium text-white transition hover:bg-slate-700"
+          onClick={onStart}
+        >
+          Start mock interview →
+        </button>
+        <button
+          className="rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-medium text-slate-800 transition hover:border-slate-400 hover:bg-slate-50"
+          onClick={onStartTeacher}
+        >
+          Try co-browse teacher →
+        </button>
+      </div>
       <p className="-mt-3 text-center text-[11px] text-slate-400">
-        We will ask for camera + mic access. Best in Chrome or Edge (for live captions).
+        Mock interview asks for camera + mic access. Co-browse teacher follows your active
+        Chrome tab through the local extension.
       </p>
     </div>
   );

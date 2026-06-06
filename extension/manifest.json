@@ -1,0 +1,27 @@
+{
+  "manifest_version": 3,
+  "name": "Interview Prep Live Teacher",
+  "version": "0.1.0",
+  "description": "Streams the active tab to the local co-browse teacher.",
+  "permissions": ["activeTab", "tabs", "scripting"],
+  "host_permissions": [
+    "http://*/*",
+    "https://*/*",
+    "http://localhost:3100/*",
+    "http://127.0.0.1:3100/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Live Teacher"
+  }
+}
