@@ -23,6 +23,8 @@
   // boxing it, and explaining that exact block, in document order.
   let following = false;
   let speaking = false;
+  let accepting = true; // whether to play incoming sentences (false after Stop)
+  let currentUtterance = null;
   let speakQueue = [];
   let sections = [];
   let sectionIndex = -1; // -1 = opening overview, then 0..n sections
@@ -323,6 +325,7 @@ function installWidget() {
     followBtn.classList.toggle('on', following);
     followBtn.textContent = following ? 'Follow on' : 'Follow off';
     if (following) {
+      accepting = true;
       setWidgetStatus('Reading the page...');
       startWalk();
     } else {
@@ -341,7 +344,14 @@ function installWidget() {
     inputEl.focus();
     reservePageSpace(host);
   });
-  root.querySelector('[data-stop]').addEventListener('click', stopSpeech);
+  root.querySelector('[data-stop]').addEventListener('click', () => {
+    accepting = false; // drop any sentences still streaming in from the current turn
+    following = false; // halt the walk; Follow resumes it
+    followBtn.classList.remove('on');
+    followBtn.textContent = 'Follow off';
+    stopSpeech();
+    setWidgetStatus('Stopped. Click Follow to resume.');
+  });
   root.querySelector('[data-min]').addEventListener('click', () => {
     bar.classList.toggle('collapsed');
     reservePageSpace(host);
@@ -387,6 +397,7 @@ function releasePageSpace() {
 
 // `focus` is the exact block text to explain. Sentences stream back via TEACH_SAY.
 function requestTeaching(question, focus, mode) {
+  accepting = true; // a new teach turn wants to be heard
   stopSpeech();
   const context = collectContext();
   chrome.runtime.sendMessage({ type: 'TEACH_CURRENT_PAGE', context, question, focus, mode }, (response) => {
@@ -414,6 +425,7 @@ function setWidgetStatus(text) {
 // off. `speaking` stays true until the queue drains, which keeps the walk from
 // advancing to the next block before the current one is finished.
 function enqueueSpeak(item) {
+  if (!accepting) return; // dropped after Stop, incl. sentences still streaming in
   const text = normalize(item && item.text);
   if (!text) return;
   speakQueue.push({ text, highlights: (item.highlights || []).filter(Boolean) });
@@ -424,6 +436,7 @@ function drainSpeak() {
   const item = speakQueue.shift();
   if (!item) {
     speaking = false;
+    currentUtterance = null;
     scheduleFollowUp();
     return;
   }
@@ -437,10 +450,15 @@ function drainSpeak() {
     if (typeof event.charIndex === 'number') revealCaption(event.charIndex);
   };
   utterance.onend = () => {
+    currentUtterance = null;
     revealCaption(item.text.length);
     drainSpeak();
   };
-  utterance.onerror = drainSpeak;
+  utterance.onerror = () => {
+    currentUtterance = null;
+    drainSpeak();
+  };
+  currentUtterance = utterance;
   speechSynthesis.speak(utterance);
 }
 
@@ -491,6 +509,13 @@ function stopSpeech() {
   speakQueue = [];
   speaking = false;
   clearTimeout(followUpTimer);
+  // Detach handlers BEFORE cancel, so cancel()'s onend doesn't advance the walk.
+  if (currentUtterance) {
+    currentUtterance.onend = null;
+    currentUtterance.onboundary = null;
+    currentUtterance.onerror = null;
+    currentUtterance = null;
+  }
   speechSynthesis.cancel();
   clearHighlight();
 }
