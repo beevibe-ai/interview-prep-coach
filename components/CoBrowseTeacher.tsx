@@ -21,8 +21,10 @@ export default function CoBrowseTeacher({ onBack }: { onBack: () => void }) {
   const [guideText, setGuideText] = useState('');
   const [timeline, setTimeline] = useState<TimelineItem[]>([]);
   const [listening, setListening] = useState(false);
+  const [language, setLanguage] = useState<'en' | 'zh'>('en');
   const itemIdRef = useRef(0);
   const speakChainRef = useRef(Promise.resolve());
+  const speechLang = language === 'zh' ? 'zh-CN' : 'en-US';
 
   const append = useCallback((kind: TimelineItem['kind'], text: string) => {
     const trimmed = text.trim();
@@ -42,10 +44,10 @@ export default function CoBrowseTeacher({ onBack }: { onBack: () => void }) {
           speak(spoken, () => {
             setState('idle');
             resolve();
-          });
+          }, speechLang);
         }),
     );
-  }, []);
+  }, [speechLang]);
 
   useEffect(() => {
     const events = new EventSource('/api/cobrowse/events');
@@ -83,7 +85,7 @@ export default function CoBrowseTeacher({ onBack }: { onBack: () => void }) {
         const res = await fetch('/api/cobrowse/teach', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ question: trimmed }),
+          body: JSON.stringify({ question: trimmed, language }),
         });
         if (!res.ok || !res.body) {
           const data = (await res.json().catch(() => ({}))) as { error?: string };
@@ -128,7 +130,7 @@ export default function CoBrowseTeacher({ onBack }: { onBack: () => void }) {
         append('error', message);
       }
     },
-    [append, context, speakQueued],
+    [append, context, language, speakQueued],
   );
 
   const sendCommand = useCallback(
@@ -152,7 +154,7 @@ export default function CoBrowseTeacher({ onBack }: { onBack: () => void }) {
   );
 
   const captureQuestion = useCallback(() => {
-    const recognition = getRecognition();
+    const recognition = getRecognition(speechLang);
     if (!recognition) {
       setStatus('Voice input needs Chrome or Edge speech recognition.');
       return;
@@ -184,7 +186,7 @@ export default function CoBrowseTeacher({ onBack }: { onBack: () => void }) {
     } catch {
       setListening(false);
     }
-  }, [askTeacher]);
+  }, [askTeacher, speechLang]);
 
   const selectedText = context?.selection?.trim();
   const busy = state === 'thinking' || state === 'speaking';
@@ -224,6 +226,22 @@ export default function CoBrowseTeacher({ onBack }: { onBack: () => void }) {
           </div>
 
           <div className="mt-4 flex flex-wrap gap-2">
+            <div className="flex rounded-xl border border-slate-200 text-sm font-medium overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setLanguage('en')}
+                className={`px-3 py-2 transition ${language === 'en' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-50'}`}
+              >
+                EN
+              </button>
+              <button
+                type="button"
+                onClick={() => setLanguage('zh')}
+                className={`px-3 py-2 transition ${language === 'zh' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-50'}`}
+              >
+                中文
+              </button>
+            </div>
             <button
               type="button"
               onClick={() => void askTeacher()}

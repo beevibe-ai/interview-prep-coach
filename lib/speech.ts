@@ -50,7 +50,7 @@ export function computeDelivery(
 }
 
 /** Speak text aloud via the browser's built-in TTS. */
-export function speak(text: string, onDone?: () => void): void {
+export function speak(text: string, onDone?: () => void, lang = 'en-US'): void {
   if (typeof window === 'undefined' || !window.speechSynthesis) {
     onDone?.();
     return;
@@ -75,6 +75,7 @@ export function speak(text: string, onDone?: () => void): void {
   };
 
   const utter = new SpeechSynthesisUtterance(text);
+  utter.lang = lang;
   utter.rate = 1.02;
   utter.pitch = 1;
   utter.onend = finish;
@@ -114,14 +115,14 @@ export function sanitizeForSpeech(text: string): string {
 }
 
 /** Create a live speech-recognition session, or null if unsupported. */
-export function getRecognition(): SpeechRecognition | null {
+export function getRecognition(lang = 'en-US'): SpeechRecognition | null {
   if (typeof window === 'undefined') return null;
   const Ctor = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!Ctor) return null;
   const recognition = new Ctor();
   recognition.continuous = true;
   recognition.interimResults = true;
-  recognition.lang = 'en-US';
+  recognition.lang = lang;
   return recognition;
 }
 

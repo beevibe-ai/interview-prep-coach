@@ -18,6 +18,9 @@
   let captionWordEls = [];
   let savedBodyMarginBottom = null;
 
+  // Language selection: 'en' (English) or 'zh' (Mandarin). Persists for the page session.
+  let teachLanguage = 'en';
+
   // Co-browse is opt-in. While following, the teacher reads the page as an
   // ordered list of content blocks and walks them — scrolling to each block,
   // boxing it, and explaining that exact block, in document order.
@@ -294,16 +297,24 @@ function installWidget() {
         cursor: pointer; width: 30px; height: 30px; font-size: 13px; line-height: 1;
       }
       .icon:hover { background: rgba(255,255,255,0.2); }
+      .lang-toggle { display: flex; border-radius: 8px; overflow: hidden; flex-shrink: 0; border: 1px solid #334155; }
+      .lang-btn { border: 0; background: #1e293b; color: #94a3b8; cursor: pointer; font: 700 11px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; padding: 5px 8px; }
+      .lang-btn.active { background: #38bdf8; color: #04263a; }
       .bar.collapsed .stage,
       .bar.collapsed [data-teach],
       .bar.collapsed [data-ask],
-      .bar.collapsed [data-stop] { display: none; }
+      .bar.collapsed [data-stop],
+      .bar.collapsed .lang-toggle { display: none; }
     </style>
     <div class="bar">
       <button class="follow" data-follow>Follow off</button>
       <div class="stage">
         <div class="caption" data-empty="Turn on Follow — I'll read through the page with you, block by block."></div>
         <input class="ask-input" placeholder="Ask about this page, then press Enter" />
+      </div>
+      <div class="lang-toggle">
+        <button class="lang-btn active" data-lang="en">EN</button>
+        <button class="lang-btn" data-lang="zh">中文</button>
       </div>
       <div class="controls">
         <button class="icon" data-teach title="Explain the section on screen">&#9654;</button>
@@ -319,6 +330,16 @@ function installWidget() {
   inputEl = root.querySelector('.ask-input');
   const bar = root.querySelector('.bar');
   const followBtn = root.querySelector('[data-follow]');
+  const langBtns = root.querySelectorAll('[data-lang]');
+
+  langBtns.forEach((btn) => {
+    btn.addEventListener('click', () => {
+      teachLanguage = btn.dataset.lang;
+      langBtns.forEach((b) => b.classList.toggle('active', b.dataset.lang === teachLanguage));
+      inputEl.placeholder = teachLanguage === 'zh' ? '用中文提问，按 Enter 发送' : 'Ask about this page, then press Enter';
+      stopSpeech();
+    });
+  });
 
   followBtn.addEventListener('click', () => {
     following = !following;
@@ -400,7 +421,7 @@ function requestTeaching(question, focus, mode) {
   accepting = true; // a new teach turn wants to be heard
   stopSpeech();
   const context = collectContext();
-  chrome.runtime.sendMessage({ type: 'TEACH_CURRENT_PAGE', context, question, focus, mode }, (response) => {
+  chrome.runtime.sendMessage({ type: 'TEACH_CURRENT_PAGE', context, question, focus, mode, language: teachLanguage }, (response) => {
     if (chrome.runtime.lastError) {
       setWidgetStatus('Local teacher is not reachable.');
       return;
@@ -444,6 +465,7 @@ function drainSpeak() {
   renderCaption(item);
 
   const utterance = new SpeechSynthesisUtterance(item.text);
+  utterance.lang = teachLanguage === 'zh' ? 'zh-CN' : 'en-US';
   utterance.rate = 1.02;
   // onboundary fires per spoken word, so the caption reveals at voice pace.
   utterance.onboundary = (event) => {
