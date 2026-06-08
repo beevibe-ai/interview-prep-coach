@@ -17,6 +17,7 @@
   let captionEl;
   let captionWordEls = [];
   let savedBodyMarginBottom = null;
+  let teachLanguage = 'en';
 
   // Co-browse is opt-in. While following, the teacher reads the page as an
   // ordered list of content blocks and walks them — scrolling to each block,
@@ -26,6 +27,10 @@
   let accepting = true; // whether to play incoming sentences (false after Stop)
   let currentUtterance = null;
   let speakQueue = [];
+  let activeRequestId = '';
+  let seenSentences = new Set();
+  let voiceLoadTimer = null;
+  let voiceLoadHandler = null;
   let sections = [];
   let sectionIndex = -1; // -1 = opening overview, then 0..n sections
   let lastWalkUrl = '';
@@ -49,7 +54,11 @@
       return false;
     }
     if (message?.type === 'TEACH_SAY') {
-      enqueueSpeak({ text: message.text, highlights: message.highlights || [] });
+      enqueueSpeak({
+        text: message.text,
+        highlights: message.highlights || [],
+        requestId: message.requestId || '',
+      });
       sendResponse({ ok: true });
       return false;
     }
@@ -294,16 +303,24 @@ function installWidget() {
         cursor: pointer; width: 30px; height: 30px; font-size: 13px; line-height: 1;
       }
       .icon:hover { background: rgba(255,255,255,0.2); }
+      .lang-toggle { display: flex; border-radius: 8px; overflow: hidden; flex-shrink: 0; border: 1px solid #334155; }
+      .lang-btn { border: 0; background: #1e293b; color: #94a3b8; cursor: pointer; font: 700 11px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; padding: 5px 8px; }
+      .lang-btn.active { background: #38bdf8; color: #04263a; }
       .bar.collapsed .stage,
       .bar.collapsed [data-teach],
       .bar.collapsed [data-ask],
-      .bar.collapsed [data-stop] { display: none; }
+      .bar.collapsed [data-stop],
+      .bar.collapsed .lang-toggle { display: none; }
     </style>
     <div class="bar">
       <button class="follow" data-follow>Follow off</button>
       <div class="stage">
         <div class="caption" data-empty="Turn on Follow — I'll read through the page with you, block by block."></div>
         <input class="ask-input" placeholder="Ask about this page, then press Enter" />
+      </div>
+      <div class="lang-toggle">
+        <button class="lang-btn active" data-lang="en">EN</button>
+        <button class="lang-btn" data-lang="zh">中文</button>
       </div>
       <div class="controls">
         <button class="icon" data-teach title="Explain the section on screen">&#9654;</button>
@@ -319,6 +336,17 @@ function installWidget() {
   inputEl = root.querySelector('.ask-input');
   const bar = root.querySelector('.bar');
   const followBtn = root.querySelector('[data-follow]');
+  const langBtns = root.querySelectorAll('[data-lang]');
+
+  langBtns.forEach((btn) => {
+    btn.addEventListener('click', () => {
+      teachLanguage = btn.dataset.lang;
+      langBtns.forEach((b) => b.classList.toggle('active', b.dataset.lang === teachLanguage));
+      inputEl.placeholder =
+        teachLanguage === 'zh' ? '用中文提问，按 Enter 发送' : 'Ask about this page, then press Enter';
+      stopSpeech();
+    });
+  });
 
   followBtn.addEventListener('click', () => {
     following = !following;
@@ -400,17 +428,32 @@ function requestTeaching(question, focus, mode) {
   accepting = true; // a new teach turn wants to be heard
   stopSpeech();
   const context = collectContext();
-  chrome.runtime.sendMessage({ type: 'TEACH_CURRENT_PAGE', context, question, focus, mode }, (response) => {
-    if (chrome.runtime.lastError) {
-      setWidgetStatus('Local teacher is not reachable.');
-      return;
-    }
-    if (!response?.ok) {
-      setWidgetStatus(response?.error || 'Teacher is unavailable.');
-      return;
-    }
-    if (!response.streamed) scheduleFollowUp(); // empty turn — keep the walk moving
-  });
+  const requestId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  activeRequestId = requestId;
+  seenSentences = new Set();
+  chrome.runtime.sendMessage(
+    { type: 'TEACH_CURRENT_PAGE', context, question, focus, mode, language: teachLanguage, requestId },
+    (response) => {
+      if (chrome.runtime.lastError) {
+        setWidgetStatus('Local teacher is not reachable.');
+        return;
+      }
+      if (!response?.ok) {
+        setWidgetStatus(response?.error || 'Teacher is unavailable.');
+        return;
+      }
+      if (Array.isArray(response.sentences)) {
+        response.sentences.forEach((sentence) => {
+          enqueueSpeak({
+            text: sentence.text,
+            highlights: sentence.highlights || [],
+            requestId: response.requestId || requestId,
+          });
+        });
+      }
+      if (!response.streamed) scheduleFollowUp(); // empty turn — keep the walk moving
+    },
+  );
 }
 
 // Status messages live in the caption area (shown via its empty-state hint).
@@ -428,6 +471,10 @@ function enqueueSpeak(item) {
   if (!accepting) return; // dropped after Stop, incl. sentences still streaming in
   const text = normalize(item && item.text);
   if (!text) return;
+  const requestId = item.requestId || activeRequestId;
+  const key = `${requestId}:${text}`;
+  if (requestId && seenSentences.has(key)) return;
+  if (requestId) seenSentences.add(key);
   speakQueue.push({ text, highlights: (item.highlights || []).filter(Boolean) });
   if (!speaking) drainSpeak();
 }
@@ -443,23 +490,94 @@ function drainSpeak() {
   speaking = true;
   renderCaption(item);
 
-  const utterance = new SpeechSynthesisUtterance(item.text);
-  utterance.rate = 1.02;
-  // onboundary fires per spoken word, so the caption reveals at voice pace.
-  utterance.onboundary = (event) => {
-    if (typeof event.charIndex === 'number') revealCaption(event.charIndex);
+  const start = () => {
+    clearVoiceLoadWait();
+    const utterance = new SpeechSynthesisUtterance(item.text);
+    configureUtteranceVoice(utterance);
+    // onboundary fires per spoken word, so the caption reveals at voice pace.
+    utterance.onboundary = (event) => {
+      if (typeof event.charIndex === 'number') revealCaption(event.charIndex);
+    };
+    utterance.onend = () => {
+      currentUtterance = null;
+      revealCaption(item.text.length);
+      drainSpeak();
+    };
+    utterance.onerror = () => {
+      currentUtterance = null;
+      drainSpeak();
+    };
+    currentUtterance = utterance;
+    speechSynthesis.speak(utterance);
   };
-  utterance.onend = () => {
-    currentUtterance = null;
-    revealCaption(item.text.length);
-    drainSpeak();
-  };
-  utterance.onerror = () => {
-    currentUtterance = null;
-    drainSpeak();
-  };
-  currentUtterance = utterance;
-  speechSynthesis.speak(utterance);
+
+  if (shouldWaitForMandarinVoice()) {
+    voiceLoadHandler = start;
+    voiceLoadTimer = setTimeout(start, 250);
+    speechSynthesis.addEventListener('voiceschanged', start, { once: true });
+  } else {
+    start();
+  }
+}
+
+function configureUtteranceVoice(utterance) {
+  const lang = teachLanguage === 'zh' ? 'zh-CN' : 'en-US';
+  const voice = pickSpeechVoice(lang, speechSynthesis.getVoices?.() || []);
+  utterance.lang = voice?.lang || lang;
+  if (voice) utterance.voice = voice;
+  utterance.rate = teachLanguage === 'zh' ? 0.92 : 1.02;
+}
+
+function shouldWaitForMandarinVoice() {
+  return (
+    teachLanguage === 'zh' &&
+    typeof speechSynthesis.addEventListener === 'function' &&
+    typeof speechSynthesis.getVoices === 'function' &&
+    speechSynthesis.getVoices().length === 0
+  );
+}
+
+function clearVoiceLoadWait() {
+  if (voiceLoadTimer) clearTimeout(voiceLoadTimer);
+  voiceLoadTimer = null;
+  if (voiceLoadHandler) {
+    speechSynthesis.removeEventListener?.('voiceschanged', voiceLoadHandler);
+    voiceLoadHandler = null;
+  }
+}
+
+function pickSpeechVoice(lang, voices) {
+  const primary = lang.split('-')[0].toLowerCase();
+  let best = null;
+  for (const voice of voices) {
+    const score = scoreVoice(voice, lang, primary);
+    if (score <= 0) continue;
+    if (!best || score > best.score) best = { voice, score };
+  }
+  return best?.voice || null;
+}
+
+function scoreVoice(voice, lang, primary) {
+  const target = lang.toLowerCase();
+  const voiceLang = String(voice.lang || '').toLowerCase();
+  const name = String(voice.name || '').toLowerCase();
+  let score = 0;
+  if (voiceLang === target) score += 100;
+  else if (voiceLang.startsWith(`${target}-`)) score += 90;
+  else if (voiceLang.split('-')[0] === primary) score += 60;
+  else return 0;
+
+  if (primary === 'zh') {
+    if (/mandarin|普通话|普通話|国语|國語|xiaoxiao|xiaoyi|xiaobei|yunxi|yunyang|tingting|mei-?jia|sin-?ji|li-?mu|mainland|china/.test(name)) {
+      score += 35;
+    }
+    if (/cantonese|yue|粤|粵|hong kong|香港|taiwan|台灣|台湾/.test(name)) {
+      score -= 50;
+    }
+  }
+  if (/natural|premium|enhanced|google|microsoft/.test(name)) score += 8;
+  if (voice.localService) score += 2;
+  return score;
 }
 
 // Render the sentence as per-word spans (revealed in time with the voice) and
@@ -509,6 +627,7 @@ function stopSpeech() {
   speakQueue = [];
   speaking = false;
   clearTimeout(followUpTimer);
+  clearVoiceLoadWait();
   // Detach handlers BEFORE cancel, so cancel()'s onend doesn't advance the walk.
   if (currentUtterance) {
     currentUtterance.onend = null;

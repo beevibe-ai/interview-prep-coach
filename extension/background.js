@@ -14,7 +14,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   if (message?.type === 'TEACH_CURRENT_PAGE') {
     const context = withTab(sender, message.context || lastContextByTab.get(sender.tab?.id));
-    void teachCurrentPage(context, message.question || '', message.focus || '', message.mode || '').then(sendResponse);
+    void teachCurrentPage(
+      context,
+      message.question || '',
+      message.focus || '',
+      message.mode || '',
+      message.language || 'en',
+      message.requestId || '',
+    ).then(sendResponse);
     return true;
   }
 
@@ -51,14 +58,14 @@ async function postContext(context) {
   }
 }
 
-async function teachCurrentPage(context, question, focus, mode) {
+async function teachCurrentPage(context, question, focus, mode, language, requestId) {
   const tabId = context.tabId;
   try {
     await postContext(context);
     const res = await fetch(`${API_BASE}/api/cobrowse/teach`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ question, focus, mode }),
+      body: JSON.stringify({ question, focus, mode, language }),
     });
     if (!res.ok || !res.body) {
       let message = 'Teacher is unavailable.';
@@ -78,6 +85,7 @@ async function teachCurrentPage(context, question, focus, mode) {
     const decoder = new TextDecoder();
     let buffer = '';
     let spoke = false;
+    const sentences = [];
     for (;;) {
       const { done, value } = await reader.read();
       if (done) break;
@@ -96,14 +104,20 @@ async function teachCurrentPage(context, question, focus, mode) {
         }
         if (event.type === 'say' && event.text) {
           spoke = true;
-          pushToTab(tabId, { type: 'TEACH_SAY', text: event.text, highlights: event.highlights || [] });
+          const sentence = {
+            text: event.text,
+            highlights: event.highlights || [],
+            requestId,
+          };
+          sentences.push(sentence);
+          pushToTab(tabId, { type: 'TEACH_SAY', ...sentence });
         } else if (event.type === 'error') {
           pushToTab(tabId, { type: 'TEACH_STATUS', text: event.message || 'Teacher error.' });
         }
       }
     }
-    pushToTab(tabId, { type: 'TEACH_DONE' });
-    return { ok: true, streamed: spoke };
+    pushToTab(tabId, { type: 'TEACH_DONE', requestId });
+    return { ok: true, streamed: spoke, sentences, requestId };
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Teacher is unavailable.';
     pushToTab(tabId, { type: 'TEACH_STATUS', text: message });

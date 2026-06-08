@@ -1,9 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { speak } from './speech';
+import { getRecognition, pickSpeechVoice, speak } from './speech';
 
 // Minimal stand-in for the browser's SpeechSynthesisUtterance.
 class FakeUtterance {
   text: string;
+  lang = '';
+  voice: SpeechSynthesisVoice | null = null;
   rate = 1;
   pitch = 1;
   onend: (() => void) | null = null;
@@ -15,12 +17,13 @@ class FakeUtterance {
 
 // Install a fake speechSynthesis on the global. `autoEnd: true` simulates a
 // browser that fires onend; `false` simulates Chrome's bug where it never does.
-function installSynth(autoEnd: boolean) {
+function installSynth(autoEnd: boolean, voices: SpeechSynthesisVoice[] = []) {
   const synth = {
     speaking: true,
     cancel: vi.fn(),
     pause: vi.fn(),
     resume: vi.fn(),
+    getVoices: vi.fn(() => voices),
     speak: vi.fn((u: FakeUtterance) => {
       if (autoEnd) u.onend?.();
     }),
@@ -66,4 +69,83 @@ describe('speak()', () => {
     speak('Hello', onDone);
     expect(onDone).toHaveBeenCalledTimes(1);
   });
+
+  it('sets the requested utterance language', () => {
+    const synth = installSynth(false);
+    speak('你好，欢迎。', undefined, 'zh-CN');
+
+    const utterance = synth.speak.mock.calls[0][0] as FakeUtterance;
+    expect(utterance.lang).toBe('zh-CN');
+  });
+
+  it('selects a Mandarin voice when one is available', () => {
+    const mandarin = voice('Microsoft Xiaoxiao Online Natural - Chinese Mainland', 'zh-CN');
+    const synth = installSynth(false, [voice('Google Cantonese Hong Kong', 'zh-HK'), mandarin]);
+
+    speak('你好，欢迎。', undefined, 'zh-CN');
+
+    const utterance = synth.speak.mock.calls[0][0] as FakeUtterance;
+    expect(utterance.voice).toBe(mandarin);
+    expect(utterance.rate).toBeLessThan(1);
+  });
+
+  it('does not cut off unspaced Chinese text with the English word-count fallback', () => {
+    installSynth(false);
+    const onDone = vi.fn();
+
+    speak('这是一段比较长的中文句子，用来确认语音不会太早结束。', onDone, 'zh-CN');
+
+    vi.advanceTimersByTime(4000);
+    expect(onDone).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(12000);
+    expect(onDone).toHaveBeenCalledTimes(1);
+  });
 });
+
+describe('pickSpeechVoice()', () => {
+  it('prefers Mainland Mandarin over Cantonese or Taiwan voices for zh-CN', () => {
+    const mandarin = voice('Microsoft Xiaoxiao Online Natural - Chinese Mainland', 'zh-CN');
+    const picked = pickSpeechVoice('zh-CN', [
+      voice('Google Cantonese Hong Kong', 'zh-HK'),
+      voice('Mei-Jia Taiwan', 'zh-TW'),
+      mandarin,
+    ]);
+
+    expect(picked).toBe(mandarin);
+  });
+});
+
+describe('getRecognition()', () => {
+  afterEach(() => {
+    delete (globalThis as Record<string, unknown>).window;
+  });
+
+  it('sets the requested speech-recognition language', () => {
+    class FakeRecognition {
+      continuous = false;
+      interimResults = false;
+      lang = '';
+    }
+    (globalThis as Record<string, unknown>).window = {
+      SpeechRecognition: FakeRecognition,
+    };
+
+    const recognition = getRecognition('zh-CN');
+
+    expect(recognition).toMatchObject({
+      continuous: true,
+      interimResults: true,
+      lang: 'zh-CN',
+    });
+  });
+});
+
+function voice(name: string, lang: string): SpeechSynthesisVoice {
+  return {
+    name,
+    lang,
+    default: false,
+    localService: false,
+    voiceURI: name,
+  };
+}
