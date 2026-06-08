@@ -14,7 +14,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   if (message?.type === 'TEACH_CURRENT_PAGE') {
     const context = withTab(sender, message.context || lastContextByTab.get(sender.tab?.id));
-    void teachCurrentPage(context, message.question || '', message.focus || '', message.mode || '').then(sendResponse);
+    void teachCurrentPage(context, message.question || '', message.focus || '', message.mode || '', message.language || 'en').then(sendResponse);
     return true;
   }
 
@@ -51,14 +51,14 @@ async function postContext(context) {
   }
 }
 
-async function teachCurrentPage(context, question, focus, mode) {
+async function teachCurrentPage(context, question, focus, mode, language) {
   const tabId = context.tabId;
   try {
     await postContext(context);
     const res = await fetch(`${API_BASE}/api/cobrowse/teach`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ question, focus, mode }),
+      body: JSON.stringify({ question, focus, mode, language }),
     });
     if (!res.ok || !res.body) {
       let message = 'Teacher is unavailable.';
